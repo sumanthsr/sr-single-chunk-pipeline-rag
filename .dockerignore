@@ -1,0 +1,26 @@
+# Git
+.git
+.gitignore
+.github
+
+# Python cache
+__pycache__
+*.py[cod]
+*.egg-info
+
+# Runtime-generated data — bind-mounted, not baked into image
+chroma_db/
+pdfs/
+app/.model_cache/
+
+# Docs and infra config not needed in image
+README.md
+docs/
+infra/
+
+# Tests — not needed at runtime
+tests/
+
+# Local env files
+.env
+.venv/

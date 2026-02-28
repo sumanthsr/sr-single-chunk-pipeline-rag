@@ -1,0 +1,124 @@
+# =============================================================================
+# config/config.yml
+# Single source of truth for all pipeline configuration.
+# Every value here is consumed via ConfigLoader — nothing is hardcoded
+# in application code. Change values here and restart to take effect.
+# =============================================================================
+
+app:
+  name: "Biomedical RAG"
+  version: "1.0.0"
+  log_level: "INFO"                  # DEBUG | INFO | WARNING | ERROR
+
+# -----------------------------------------------------------------------------
+# PDF ingestion
+# -----------------------------------------------------------------------------
+ingestion:
+  pdf_dir: "/app/pdfs"              # bind-mounted from ./pdfs on host
+  min_text_chars_per_page: 30       # below this, fallback to PyMuPDF then OCR
+  skip_sections:                    # section labels to drop entirely
+    - "references"
+    - "supplementary"
+
+# -----------------------------------------------------------------------------
+# Chunking
+# -----------------------------------------------------------------------------
+chunking:
+  target_tokens: 350                # target chunk size (fits 512 ctx with prefix)
+  overlap_tokens: 35                # ~10% overlap, no full sentence repeated
+  min_tokens: 50                    # chunks below this are dropped
+  max_tokens: 450                   # hard cap before forced split
+  separators:                       # tried in order
+    - "\n\n"
+    - "\n"
+    - ". "
+    - "! "
+    - "? "
+    - "; "
+    - " "
+    - ""
+
+# -----------------------------------------------------------------------------
+# Embedding
+# -----------------------------------------------------------------------------
+embedding:
+  model_name: "pritamdeka/S-PubMedBert-MS-MARCO"
+  device: "cpu"                     # cpu | cuda | mps — auto-detected if omitted
+  batch_size: 32
+  normalize: true                   # L2-normalize vectors before storage
+  cache_dir: "/app/.model_cache"    # persisted via Docker volume
+
+# -----------------------------------------------------------------------------
+# Vector store — ChromaDB
+# -----------------------------------------------------------------------------
+chromadb:
+  persist_dir: "/app/chroma_db"    # bind-mounted from ./chroma_db on host
+  collection_name: "biomedical_chunks"
+  distance_metric: "cosine"
+  top_k: 5                          # chunks returned per query
+
+# -----------------------------------------------------------------------------
+# LLM — Ollama
+# -----------------------------------------------------------------------------
+llm:
+  base_url: "http://ollama:11434"  # Docker service name
+  model: "llama3"
+  temperature: 0.1                  # low for factual biomedical answers
+  max_tokens: 1024
+  stream: true
+  timeout_seconds: 120
+  system_prompt: |
+    You are a precise biomedical research assistant.
+    Answer the user's question using ONLY the provided context chunks.
+    For every claim cite the source as [PDF: <filename>, Page: <page>, Section: <section>].
+    If the context does not contain enough information, say so explicitly.
+    Do not speculate beyond what the context states.
+
+# -----------------------------------------------------------------------------
+# Retrieval
+# -----------------------------------------------------------------------------
+retrieval:
+  top_k: 5                          # number of chunks to retrieve
+  score_threshold: 0.0              # minimum cosine similarity (0.0 = no filter)
+  cross_pdf: true                   # search across all PDFs (no per-pdf filter)
+
+# -----------------------------------------------------------------------------
+# Streamlit UI
+# -----------------------------------------------------------------------------
+ui:
+  page_title: "Biomedical Research Assistant"
+  page_icon: ""
+  layout: "wide"
+  show_sources: true                # show retrieved chunks below answer
+  show_scores: true                 # show cosine similarity scores
+  max_history: 20                   # chat turns kept in session state
+
+# -----------------------------------------------------------------------------
+# Scaling — Nginx upstream config (used when replicas > 1)
+# -----------------------------------------------------------------------------
+scaling:
+  streamlit_replicas: 1             # increase + uncomment nginx profile to scale
+  nginx_port: 80
+
+# -----------------------------------------------------------------------------
+# Observability — provider-agnostic hooks
+# Flip enabled: true and set the relevant keys to activate a provider.
+# The observability module reads this block and initialises the right client.
+# Supported future providers: langfuse | langsmith | arize | otel | none
+# -----------------------------------------------------------------------------
+observability:
+  enabled: false
+  provider: "none"                  # none | langfuse | langsmith | arize | otel
+  # langfuse:
+  #   public_key: ""
+  #   secret_key: ""
+  #   host: "https://cloud.langfuse.com"
+  # langsmith:
+  #   api_key: ""
+  #   project: "biomedical-rag"
+  # arize:
+  #   api_key: ""
+  #   space_key: ""
+  # otel:
+  #   endpoint: "http://otel-collector:4317"
+  #   service_name: "biomedical-rag"
