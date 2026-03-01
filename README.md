@@ -18,7 +18,7 @@ With PDFs stored in a directory, run one command, and get a local chat interface
 | Chunking | Custom RecursiveTextSplitter | 350 token target, 35 token overlap, never crosses section boundaries |
 | Embedding | `pritamdeka/S-PubMedBert-MS-MARCO` | Pretrained on PubMed, fine-tuned for retrieval — understands biomedical terminology |
 | Vector store | ChromaDB (embedded) | No separate container, persists to disk, cross-PDF search implicit |
-| LLM | Ollama (`tinyllama`) | Fully local, no API key, CPU-only inference |
+| LLM | Ollama (`phi3`) | Fully local, no API key, CPU-only inference |
 | UI | Streamlit | Python-native, fastest to iterate |
 | Containers | 2 (streamlit + ollama) | Minimal by design |
 | Scaling | Nginx (optional profile) | Add replicas with one flag when needed |
