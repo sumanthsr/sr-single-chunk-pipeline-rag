@@ -6,7 +6,7 @@
 # =============================================================================
 
 app:
-  name: "Biomedical RAG"
+  name: "Single Chunk Pipeline RAG"
   version: "1.0.0"
   log_level: "INFO"                  # DEBUG | INFO | WARNING | ERROR
 
@@ -62,7 +62,7 @@ chromadb:
 # -----------------------------------------------------------------------------
 llm:
   base_url: "http://ollama:11434"  # Docker service name
-  model: "llama3"
+  model: "phi3"
   temperature: 0.1                  # low for factual biomedical answers
   max_tokens: 1024
   stream: true
@@ -86,7 +86,7 @@ retrieval:
 # Streamlit UI
 # -----------------------------------------------------------------------------
 ui:
-  page_title: "Biomedical Research Assistant"
+  page_title: "Biomed Research Assistant"
   page_icon: ""
   layout: "wide"
   show_sources: true                # show retrieved chunks below answer

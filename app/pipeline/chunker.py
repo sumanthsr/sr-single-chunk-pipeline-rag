@@ -1,3 +1,8 @@
+"""
+app/pipeline/chunker.py
+Stage 3 — Split ParsedElements into self-contained Chunk objects.
+"""
+
 from __future__ import annotations
 
 import uuid
@@ -28,9 +33,6 @@ class Chunk:
 
 
 def chunk_document(doc: ParsedDocument) -> list[Chunk]:
-    """
-    Convert a ParsedDocument into a flat list of Chunk objects.
-    """
     skip = set(cfg.ingestion.skip_sections)
     chunks: list[Chunk] = []
     chunk_index = 0
@@ -38,59 +40,35 @@ def chunk_document(doc: ParsedDocument) -> list[Chunk]:
     for el in doc.elements:
         if el.section_label in skip:
             continue
-
         if el.element_type == ElementType.TABLE:
-            chunk = _make_chunk(el.text, el, doc, chunk_index)
-            chunks.append(chunk)
+            chunks.append(_make_chunk(el.text, el, doc, chunk_index))
             chunk_index += 1
             continue
-
         for text in _split(el.text):
-            tokens = _count_tokens(text)
-            if tokens < cfg.chunking.min_tokens:
+            if _count_tokens(text) < cfg.chunking.min_tokens:
                 continue
-            chunk = _make_chunk(text, el, doc, chunk_index)
-            chunks.append(chunk)
+            chunks.append(_make_chunk(text, el, doc, chunk_index))
             chunk_index += 1
 
-    logger.info(
-        "chunker.done",
-        filename=doc.pdf_filename,
-        chunks=len(chunks),
-    )
+    logger.info(f"Chunked {doc.pdf_filename}: {len(chunks)} chunks")
     return chunks
 
 
-# ---------------------------------------------------------------------------
-# Recursive splitter
-# ---------------------------------------------------------------------------
-
 def _count_tokens(text: str) -> int:
-    """Approximate: 1 token ~ 4 chars for English biomedical text."""
     return max(1, len(text) // 4)
 
 
 def _split(text: str) -> list[str]:
-    target = cfg.chunking.target_tokens
-    overlap = cfg.chunking.overlap_tokens
-    max_tok = cfg.chunking.max_tokens
-    separators = list(cfg.chunking.separators)
-
-    raw = _recursive_split(text, separators, target)
-    return _merge_with_overlap(raw, target, overlap, max_tok)
+    raw = _recursive_split(text, list(cfg.chunking.separators), cfg.chunking.target_tokens)
+    return _merge_with_overlap(raw, cfg.chunking.target_tokens, cfg.chunking.overlap_tokens, cfg.chunking.max_tokens)
 
 
 def _recursive_split(text: str, separators: list[str], target: int) -> list[str]:
     if not separators:
         return [text]
-
     sep = separators[0]
     rest = separators[1:]
-
-    splits = text.split(sep) if sep else [
-        text[i: i + target * 4] for i in range(0, len(text), target * 4)
-    ]
-
+    splits = text.split(sep) if sep else [text[i:i + target * 4] for i in range(0, len(text), target * 4)]
     result: list[str] = []
     for s in splits:
         s = s.strip()
@@ -103,12 +81,7 @@ def _recursive_split(text: str, separators: list[str], target: int) -> list[str]
     return result
 
 
-def _merge_with_overlap(
-    splits: list[str],
-    target: int,
-    overlap: int,
-    max_tok: int,
-) -> list[str]:
+def _merge_with_overlap(splits: list[str], target: int, overlap: int, max_tok: int) -> list[str]:
     merged: list[str] = []
     current: list[str] = []
     current_tokens = 0
@@ -137,17 +110,8 @@ def _merge_with_overlap(
     return [c for c in merged if c]
 
 
-# ---------------------------------------------------------------------------
-# Chunk construction
-# ---------------------------------------------------------------------------
-
-def _make_chunk(
-    text: str,
-    el: ParsedElement,
-    doc: ParsedDocument,
-    index: int,
-) -> Chunk:
-    prefixed = _prefix(doc.title, el.section_label, text)
+def _make_chunk(text: str, el: ParsedElement, doc: ParsedDocument, index: int) -> Chunk:
+    prefixed = f"[{doc.title or 'Unknown'}] | [{el.section_label.replace('_', ' ').title()}]: {text}"
     return Chunk(
         chunk_id=str(uuid.uuid4()),
         pdf_id=doc.pdf_id,
@@ -162,9 +126,3 @@ def _make_chunk(
         prefixed_text=prefixed,
         token_count=_count_tokens(text),
     )
-
-
-def _prefix(title: str, section: str, text: str) -> str:
-    t = title.strip() or "Unknown Document"
-    s = section.replace("_", " ").title()
-    return f"[{t}] | [{s}]: {text}"

@@ -11,8 +11,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Install Python dependencies before copying source
-# (layer caching — only reinstalls when requirements change)
+# Install torch CPU-only FIRST from PyTorch's own index.
+# This must happen before requirements.txt is processed — if sentence-transformers
+# pulls torch as a transitive dep from the default PyPI index it gets the full
+# CUDA+ROCm wheel (~2.5 GB with nvidia libraries). The CPU wheel is ~180 MB.
+RUN pip install --no-cache-dir \
+    torch==2.3.0 \
+    --index-url https://download.pytorch.org/whl/cpu
+
+# Install remaining dependencies (torch is already satisfied, pip will not reinstall)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
