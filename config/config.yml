@@ -1,12 +1,10 @@
 # =============================================================================
 # config/config.yml
-# Single source of truth for all pipeline configuration.
-# Every value here is consumed via ConfigLoader — nothing is hardcoded
-# in application code. Change values here and restart to take effect.
+# Change values here and restart to take effect.
 # =============================================================================
 
 app:
-  name: "Biomedical RAG"
+  name: "Single Chunk Pipeline RAG"
   version: "1.0.0"
   log_level: "INFO"                  # DEBUG | INFO | WARNING | ERROR
 
@@ -62,11 +60,11 @@ chromadb:
 # -----------------------------------------------------------------------------
 llm:
   base_url: "http://ollama:11434"  # Docker service name
-  model: "llama3"
+  model: "phi3"
   temperature: 0.1                  # low for factual biomedical answers
   max_tokens: 1024
   stream: true
-  timeout_seconds: 120
+  timeout_seconds: 500
   system_prompt: |
     You are a precise biomedical research assistant.
     Answer the user's question using ONLY the provided context chunks.
@@ -78,7 +76,7 @@ llm:
 # Retrieval
 # -----------------------------------------------------------------------------
 retrieval:
-  top_k: 5                          # number of chunks to retrieve
+  top_k: 5                         # number of chunks to retrieve
   score_threshold: 0.0              # minimum cosine similarity (0.0 = no filter)
   cross_pdf: true                   # search across all PDFs (no per-pdf filter)
 

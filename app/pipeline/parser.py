@@ -1,3 +1,9 @@
+"""
+app/pipeline/parser.py
+Stage 1 — Parse raw PDF bytes into structured elements.
+Strategy: pdfplumber -> PyMuPDF -> Tesseract OCR
+"""
+
 from __future__ import annotations
 
 import io
@@ -5,9 +11,8 @@ import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Optional
 
-import fitz  # PyMuPDF
+import fitz
 import pdfplumber
 import pytesseract
 from pdf2image import convert_from_bytes
@@ -46,19 +51,9 @@ class ParsedDocument:
 
 
 def parse_pdf(pdf_path: Path) -> ParsedDocument:
-    """
-    Entry point for Stage 1.
-    Accepts a path, returns a ParsedDocument.
-    """
     pdf_id = pdf_path.stem
     pdf_bytes = pdf_path.read_bytes()
-
-    doc = ParsedDocument(
-        pdf_filename=pdf_path.name,
-        pdf_id=pdf_id,
-        title="",
-    )
-
+    doc = ParsedDocument(pdf_filename=pdf_path.name, pdf_id=pdf_id, title="")
     try:
         elements, page_count, has_scanned = _extract(pdf_bytes)
         doc.elements = elements
@@ -66,93 +61,49 @@ def parse_pdf(pdf_path: Path) -> ParsedDocument:
         doc.has_scanned_pages = has_scanned
         doc.title = _infer_title(elements, pdf_path.stem)
     except Exception as exc:
-        msg = f"parse_failed: {exc}"
-        logger.error("parser.failed", filename=pdf_path.name, error=str(exc))
-        doc.warnings.append(msg)
-
-    logger.info(
-        "parser.done",
-        filename=pdf_path.name,
-        pages=doc.page_count,
-        elements=len(doc.elements),
-        scanned=doc.has_scanned_pages,
-    )
+        logger.error(f"Parse failed for {pdf_path.name}: {exc}")
+        doc.warnings.append(str(exc))
+    logger.info(f"Parsed {pdf_path.name}: {doc.page_count} pages, {len(doc.elements)} elements")
     return doc
 
 
-# ---------------------------------------------------------------------------
-# Helper Functions
-# ---------------------------------------------------------------------------
-
-def _extract(
-    pdf_bytes: bytes,
-) -> tuple[list[ParsedElement], int, bool]:
+def _extract(pdf_bytes: bytes) -> tuple[list[ParsedElement], int, bool]:
     elements: list[ParsedElement] = []
     has_scanned = False
     min_chars = cfg.ingestion.min_text_chars_per_page
 
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
         page_count = len(pdf.pages)
-
         for page_num, page in enumerate(pdf.pages, start=1):
-            # Tables first — avoids double-counting table text in body
-            table_els = _extract_tables(page, page_num)
-            elements.extend(table_els)
-
-            # Body text
+            elements.extend(_extract_tables(page, page_num))
             raw = (page.extract_text(x_tolerance=2, y_tolerance=2) or "").strip()
-
             if len(raw) >= min_chars:
-                elements.append(
-                    ParsedElement(
-                        text=_clean(raw),
-                        page=page_num,
-                    )
-                )
+                elements.append(ParsedElement(text=_clean(raw), page=page_num))
             else:
-                # Fallback 1: PyMuPDF
                 fitz_text = _fitz_page(pdf_bytes, page_num - 1)
                 if len(fitz_text) >= min_chars:
-                    elements.append(
-                        ParsedElement(text=_clean(fitz_text), page=page_num)
-                    )
+                    elements.append(ParsedElement(text=_clean(fitz_text), page=page_num))
                 else:
-                    # Fallback 2: OCR
                     ocr_text = _ocr_page(pdf_bytes, page_num)
                     if ocr_text:
                         has_scanned = True
-                        elements.append(
-                            ParsedElement(
-                                text=_clean(ocr_text),
-                                page=page_num,
-                                ocr=True,
-                            )
-                        )
+                        elements.append(ParsedElement(text=_clean(ocr_text), page=page_num, ocr=True))
 
     return elements, page_count, has_scanned
 
 
-def _extract_tables(page: object, page_num: int) -> list[ParsedElement]:
+def _extract_tables(page, page_num: int) -> list[ParsedElement]:
     elements = []
     try:
-        for table in page.extract_tables():  # type: ignore[attr-defined]
+        for table in page.extract_tables():
             if not table:
                 continue
-            rows = [
-                " | ".join(str(c).strip() if c else "" for c in row)
-                for row in table
-            ]
+            rows = [" | ".join(str(c).strip() if c else "" for c in row) for row in table]
             text = "\n".join(rows).strip()
             if len(text) > 10:
-                elements.append(
-                    ParsedElement(
-                        text=text,
-                        page=page_num,
-                        element_type=ElementType.TABLE,
-                    )
-                )
+                elements.append(ParsedElement(text=text, page=page_num, element_type=ElementType.TABLE))
     except Exception as exc:
-        logger.warning("parser.table_failed", page=page_num, error=str(exc))
+        logger.warning(f"Table extraction failed on page {page_num}: {exc}")
     return elements
 
 
@@ -161,18 +112,16 @@ def _fitz_page(pdf_bytes: bytes, page_index: int) -> str:
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
         return doc.load_page(page_index).get_text("text")
     except Exception as exc:
-        logger.warning("parser.fitz_failed", page=page_index, error=str(exc))
+        logger.warning(f"PyMuPDF failed on page {page_index}: {exc}")
         return ""
 
 
 def _ocr_page(pdf_bytes: bytes, page_num: int) -> str:
     try:
-        images = convert_from_bytes(
-            pdf_bytes, first_page=page_num, last_page=page_num, dpi=300
-        )
+        images = convert_from_bytes(pdf_bytes, first_page=page_num, last_page=page_num, dpi=300)
         return pytesseract.image_to_string(images[0], lang="eng") if images else ""
     except Exception as exc:
-        logger.warning("parser.ocr_failed", page=page_num, error=str(exc))
+        logger.warning(f"OCR failed on page {page_num}: {exc}")
         return ""
 
 

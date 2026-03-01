@@ -1,3 +1,8 @@
+"""
+app/pipeline/ingestor.py
+Orchestrates all pipeline stages for a directory of PDFs.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -16,45 +21,32 @@ cfg = get_config()
 
 
 def run_ingestion(pdf_dir: str | None = None) -> dict:
-    """
-    Run the full ingestion pipeline over all PDFs in pdf_dir.
-    Returns a summary dict with counts per PDF and totals.
-    """
     pdf_path = Path(pdf_dir or cfg.ingestion.pdf_dir)
     pdf_files = sorted(pdf_path.glob("*.pdf"))
 
     if not pdf_files:
-        logger.warning("ingestor.no_pdfs_found", directory=str(pdf_path))
+        logger.warning(f"No PDFs found in {pdf_path}")
         return {"pdfs": 0, "chunks": 0, "files": []}
 
-    logger.info("ingestor.started", pdf_count=len(pdf_files))
+    logger.info(f"Starting ingestion of {len(pdf_files)} PDFs")
 
     all_chunks = []
     all_vectors = []
     summary = {"pdfs": len(pdf_files), "chunks": 0, "files": []}
 
     for pdf_file in pdf_files:
-        logger.info("ingestor.processing", filename=pdf_file.name)
+        logger.info(f"Processing: {pdf_file.name}")
 
-        # Stage 1: Parse
         parsed = parse_pdf(pdf_file)
-
-        # Stage 2: Detect structure
         parsed = detect_structure(parsed)
-
-        # Stage 3: Chunk
         chunks = chunk_document(parsed)
-
-        # Stage 4: Enrich
         chunks = enrich(chunks)
 
         if not chunks:
-            logger.warning("ingestor.no_chunks", filename=pdf_file.name)
+            logger.warning(f"No chunks produced for {pdf_file.name}")
             continue
 
-        # Stage 5: Embed
         chunks, vectors = embed_chunks(chunks)
-
         all_chunks.extend(chunks)
         all_vectors.extend(vectors)
 
@@ -63,21 +55,11 @@ def run_ingestion(pdf_dir: str | None = None) -> dict:
             "chunks": len(chunks),
             "pages": parsed.page_count,
         })
+        logger.info(f"Done: {pdf_file.name} — {len(chunks)} chunks")
 
-        logger.info(
-            "ingestor.pdf_done",
-            filename=pdf_file.name,
-            chunks=len(chunks),
-        )
-
-    # Stage 6: Store all at once
     if all_chunks:
         store_chunks(all_chunks, all_vectors)
         summary["chunks"] = len(all_chunks)
 
-    logger.info(
-        "ingestor.complete",
-        total_pdfs=summary["pdfs"],
-        total_chunks=summary["chunks"],
-    )
+    logger.info(f"Ingestion complete — {summary['pdfs']} PDFs, {summary['chunks']} chunks")
     return summary

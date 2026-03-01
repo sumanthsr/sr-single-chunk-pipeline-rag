@@ -1,7 +1,5 @@
-version: "3.9"
-
 # =============================================================================
-# Biomedical RAG — Docker Compose
+# Single Chunk Pipeline RAG — Docker Compose
 #
 # Default profile (no --profile flag):
 #   streamlit + ollama  (2 containers)
@@ -26,7 +24,7 @@ services:
   # Ollama — local LLM server
   # ---------------------------------------------------------------------------
   ollama:
-    image: ollama/ollama:0.1.44
+    image: ollama/ollama:latest
     restart: unless-stopped
     volumes:
       - ollama_models:/root/.ollama
@@ -34,26 +32,22 @@ services:
       - "11434:11434"
     networks:
       - rag-network
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
 
   ollama-init:
-    image: ollama/ollama:0.1.44
+    image: ollama/ollama:latest
     depends_on:
-      ollama:
-        condition: service_healthy
+      - ollama
     networks:
       - rag-network
     volumes:
       - ollama_models:/root/.ollama
     environment:
-      OLLAMA_HOST: "ollama:11434"
+      OLLAMA_HOST: "http://ollama:11434"
     entrypoint: >
       /bin/sh -c "
-        ollama pull llama3 &&
+        echo 'Waiting for Ollama to start...' &&
+        sleep 15 &&
+        ollama pull phi3 &&
         echo 'Model ready.'
       "
     restart: "no"
@@ -69,6 +63,8 @@ services:
     environment:
       # Override any config.yml value using RAG__<SECTION>__<KEY>=value
       RAG__LLM__BASE_URL: "http://ollama:11434"
+      ANONYMIZED_TELEMETRY: "False"
+      CHROMA_TELEMETRY: "False"
     volumes:
       - ./pdfs:/app/pdfs:ro          # drop PDFs here before starting
       - ./chroma_db:/app/chroma_db   # ChromaDB persistence

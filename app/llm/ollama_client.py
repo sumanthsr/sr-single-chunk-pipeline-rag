@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Generator
 
 import httpx
@@ -12,10 +13,6 @@ cfg = get_config()
 
 
 def build_prompt(query: str, chunks: list[dict]) -> str:
-    """
-    Construct the RAG prompt from retrieved chunks.
-    Each chunk is labelled with its source for citation.
-    """
     context_parts = []
     for i, chunk in enumerate(chunks, start=1):
         source = (
@@ -24,27 +21,13 @@ def build_prompt(query: str, chunks: list[dict]) -> str:
             f"Section: {chunk.get('section_label', '?')}"
         )
         context_parts.append(f"{source}\n{chunk.get('text', '')}")
-
     context = "\n\n---\n\n".join(context_parts)
-
-    return (
-        f"Context:\n{context}\n\n"
-        f"Question: {query}\n\n"
-        f"Answer:"
-    )
+    return f"Context:\n{context}\n\nQuestion: {query}\n\nAnswer:"
 
 
-def stream_answer(
-    query: str,
-    chunks: list[dict],
-) -> Generator[str, None, None]:
-    """
-    Stream the LLM answer token by token.
-    Yields string tokens as they arrive from Ollama.
-    """
+def stream_answer(query: str, chunks: list[dict]) -> Generator[str, None, None]:
     lcfg = cfg.llm
     prompt = build_prompt(query, chunks)
-
     payload = {
         "model": lcfg.model,
         "prompt": prompt,
@@ -55,17 +38,24 @@ def stream_answer(
             "num_predict": lcfg.max_tokens,
         },
     }
-
     url = f"{lcfg.base_url}/api/generate"
 
+    # Use explicit Timeout object — connect timeout separate from read timeout.
+    # Read timeout must be long enough for the model to generate the full response.
+    timeout = httpx.Timeout(
+        connect=10.0,
+        read=lcfg.timeout_seconds,
+        write=10.0,
+        pool=10.0,
+    )
+
     try:
-        with httpx.Client(timeout=lcfg.timeout_seconds) as client:
+        with httpx.Client(timeout=timeout) as client:
             with client.stream("POST", url, json=payload) as response:
                 response.raise_for_status()
                 for line in response.iter_lines():
                     if not line:
                         continue
-                    import json
                     try:
                         data = json.loads(line)
                         token = data.get("response", "")
@@ -76,17 +66,15 @@ def stream_answer(
                     except json.JSONDecodeError:
                         continue
     except httpx.ConnectError:
-        yield (
-            "\n\n[Error: Cannot connect to Ollama. "
-            "Ensure the ollama service is running and the model is pulled.]"
-        )
+        yield "\n\n[Error: Cannot connect to Ollama. Ensure the ollama service is running.]"
+    except httpx.ReadTimeout:
+        yield "\n\n[Error: Ollama timed out generating a response. Try a shorter question or increase timeout_seconds in config.yml.]"
     except Exception as exc:
-        logger.error("ollama_client.stream_failed", error=str(exc))
+        logger.error(f"Ollama stream failed: {exc}")
         yield f"\n\n[Error: {exc}]"
 
 
 def check_ollama_health() -> bool:
-    """Return True if Ollama is reachable and the configured model is available."""
     try:
         with httpx.Client(timeout=5.0) as client:
             r = client.get(f"{cfg.llm.base_url}/api/tags")
