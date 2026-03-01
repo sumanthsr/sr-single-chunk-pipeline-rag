@@ -1,0 +1,37 @@
+# Core UI
+streamlit==1.35.0
+
+# PDF parsing
+pdfplumber==0.11.0
+PyMuPDF==1.24.0
+pytesseract==0.3.10
+pdf2image==1.17.0
+Pillow==10.3.0
+
+# Chunking / NLP
+sentence-transformers==2.7.0
+torch==2.3.0
+transformers==4.41.0
+
+# Vector store
+chromadb==0.5.0
+
+# Dedup
+datasketch==1.6.5
+
+# LLM client
+httpx==0.27.0
+
+# Config
+pyyaml==6.0.1
+
+# Logging
+structlog==24.1.0
+
+# Observability (optional providers — import-guarded in tracer.py)
+# Uncomment to activate the provider you need:
+# langfuse==2.36.0
+# langsmith==0.1.77
+# opentelemetry-api==1.24.0
+# opentelemetry-sdk==1.24.0
+# opentelemetry-exporter-otlp-proto-grpc==1.24.0

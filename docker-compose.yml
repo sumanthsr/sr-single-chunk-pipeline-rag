@@ -1,0 +1,106 @@
+version: "3.9"
+
+# =============================================================================
+# Biomedical RAG — Docker Compose
+#
+# Default profile (no --profile flag):
+#   streamlit + ollama  (2 containers)
+#
+# Scaling profile:
+#   docker compose --profile scaled up
+#   Adds nginx load balancer in front of multiple streamlit replicas.
+#   Set scaling.streamlit_replicas in config/config.yml first.
+# =============================================================================
+
+networks:
+  rag-network:
+    driver: bridge
+
+volumes:
+  ollama_models:
+  model_cache:
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Ollama — local LLM server
+  # ---------------------------------------------------------------------------
+  ollama:
+    image: ollama/ollama:0.1.44
+    restart: unless-stopped
+    volumes:
+      - ollama_models:/root/.ollama
+    ports:
+      - "11434:11434"
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  ollama-init:
+    image: ollama/ollama:0.1.44
+    depends_on:
+      ollama:
+        condition: service_healthy
+    networks:
+      - rag-network
+    volumes:
+      - ollama_models:/root/.ollama
+    environment:
+      OLLAMA_HOST: "ollama:11434"
+    entrypoint: >
+      /bin/sh -c "
+        ollama pull llama3 &&
+        echo 'Model ready.'
+      "
+    restart: "no"
+
+  # ---------------------------------------------------------------------------
+  # Streamlit — ingestion pipeline + chat UI
+  # ---------------------------------------------------------------------------
+  streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      # Override any config.yml value using RAG__<SECTION>__<KEY>=value
+      RAG__LLM__BASE_URL: "http://ollama:11434"
+    volumes:
+      - ./pdfs:/app/pdfs:ro          # drop PDFs here before starting
+      - ./chroma_db:/app/chroma_db   # ChromaDB persistence
+      - ./config:/app/config:ro      # live config without rebuild
+      - model_cache:/app/.model_cache  # HuggingFace model weights cache
+    ports:
+      - "8501:8501"
+    networks:
+      - rag-network
+    depends_on:
+      ollama-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8501/_stcore/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  # ---------------------------------------------------------------------------
+  # Nginx — load balancer (only active with: docker compose --profile scaled up)
+  # Scale streamlit replicas first:
+  #   docker compose --profile scaled up --scale streamlit=3
+  # ---------------------------------------------------------------------------
+  nginx:
+    image: nginx:1.25-alpine
+    profiles: ["scaled"]
+    restart: unless-stopped
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "80:80"
+    networks:
+      - rag-network
+    depends_on:
+      - streamlit

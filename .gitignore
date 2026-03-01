@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.env
+dist/
+build/
+
+# Model weights — too large for git, downloaded at runtime
+app/.model_cache/
+
+# ChromaDB — generated at runtime
+chroma_db/*
+!chroma_db/.gitkeep
+
+# PDFs — not committed, dropped by user
+pdfs/*.pdf
+
+# Docker
+*.tar
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
