@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+import os
+import time
+
+# Disable ChromaDB telemetry before the module is imported anywhere
+os.environ["ANONYMIZED_TELEMETRY"] = "False"
+os.environ["CHROMA_TELEMETRY"] = "False"
+
 import streamlit as st
 
 from app.utils.config_loader import get_config
@@ -8,6 +15,11 @@ from app.utils.logger import configure_logging, get_logger
 cfg = get_config()
 configure_logging(cfg.app.log_level)
 logger = get_logger(__name__)
+
+# Silence ChromaDB's internal telemetry logger entirely
+import logging
+logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
+logging.getLogger("chromadb.telemetry").setLevel(logging.CRITICAL)
 
 ucfg = cfg.ui
 
@@ -95,21 +107,12 @@ with st.sidebar:
 if "messages" not in st.session_state:
     st.session_state["messages"] = []
 
-for message in st.session_state["messages"][-cfg.ui.max_history:]:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-        if message["role"] == "assistant" and message.get("sources"):
-            _render_sources(message["sources"])
-
-
 def _render_sources(chunks: list[dict]) -> None:
-    if not ucfg.show_sources:
+    if not ucfg.show_sources or not chunks:
         return
     with st.expander(f"Sources ({len(chunks)} chunks retrieved)", expanded=False):
         for i, chunk in enumerate(chunks, start=1):
-            score_str = (
-                f"  |  score: {chunk['score']:.4f}" if ucfg.show_scores else ""
-            )
+            score_str = f"  |  score: {chunk['score']:.4f}" if ucfg.show_scores else ""
             st.markdown(
                 f"**[{i}]** `{chunk.get('pdf_filename', '?')}` "
                 f"— page {chunk.get('page', '?')} "
@@ -117,6 +120,13 @@ def _render_sources(chunks: list[dict]) -> None:
                 f"{score_str}"
             )
             st.caption(chunk.get("text", "")[:300] + "...")
+
+
+for message in st.session_state["messages"][-cfg.ui.max_history:]:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+        if message["role"] == "assistant" and message.get("sources"):
+            _render_sources(message["sources"])
 
 
 # ---------------------------------------------------------------------------

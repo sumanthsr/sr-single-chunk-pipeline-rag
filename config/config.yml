@@ -1,8 +1,6 @@
 # =============================================================================
 # config/config.yml
-# Single source of truth for all pipeline configuration.
-# Every value here is consumed via ConfigLoader — nothing is hardcoded
-# in application code. Change values here and restart to take effect.
+# Change values here and restart to take effect.
 # =============================================================================
 
 app:
@@ -66,7 +64,7 @@ llm:
   temperature: 0.1                  # low for factual biomedical answers
   max_tokens: 1024
   stream: true
-  timeout_seconds: 120
+  timeout_seconds: 500
   system_prompt: |
     You are a precise biomedical research assistant.
     Answer the user's question using ONLY the provided context chunks.
@@ -78,7 +76,7 @@ llm:
 # Retrieval
 # -----------------------------------------------------------------------------
 retrieval:
-  top_k: 5                          # number of chunks to retrieve
+  top_k: 5                         # number of chunks to retrieve
   score_threshold: 0.0              # minimum cosine similarity (0.0 = no filter)
   cross_pdf: true                   # search across all PDFs (no per-pdf filter)
 
@@ -86,7 +84,7 @@ retrieval:
 # Streamlit UI
 # -----------------------------------------------------------------------------
 ui:
-  page_title: "Biomed Research Assistant"
+  page_title: "Biomedical Research Assistant"
   page_icon: ""
   layout: "wide"
   show_sources: true                # show retrieved chunks below answer

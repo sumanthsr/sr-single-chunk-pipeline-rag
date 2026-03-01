@@ -63,6 +63,8 @@ services:
     environment:
       # Override any config.yml value using RAG__<SECTION>__<KEY>=value
       RAG__LLM__BASE_URL: "http://ollama:11434"
+      ANONYMIZED_TELEMETRY: "False"
+      CHROMA_TELEMETRY: "False"
     volumes:
       - ./pdfs:/app/pdfs:ro          # drop PDFs here before starting
       - ./chroma_db:/app/chroma_db   # ChromaDB persistence

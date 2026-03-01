@@ -39,8 +39,18 @@ def stream_answer(query: str, chunks: list[dict]) -> Generator[str, None, None]:
         },
     }
     url = f"{lcfg.base_url}/api/generate"
+
+    # Use explicit Timeout object — connect timeout separate from read timeout.
+    # Read timeout must be long enough for the model to generate the full response.
+    timeout = httpx.Timeout(
+        connect=10.0,
+        read=lcfg.timeout_seconds,
+        write=10.0,
+        pool=10.0,
+    )
+
     try:
-        with httpx.Client(timeout=lcfg.timeout_seconds) as client:
+        with httpx.Client(timeout=timeout) as client:
             with client.stream("POST", url, json=payload) as response:
                 response.raise_for_status()
                 for line in response.iter_lines():
@@ -57,6 +67,8 @@ def stream_answer(query: str, chunks: list[dict]) -> Generator[str, None, None]:
                         continue
     except httpx.ConnectError:
         yield "\n\n[Error: Cannot connect to Ollama. Ensure the ollama service is running.]"
+    except httpx.ReadTimeout:
+        yield "\n\n[Error: Ollama timed out generating a response. Try a shorter question or increase timeout_seconds in config.yml.]"
     except Exception as exc:
         logger.error(f"Ollama stream failed: {exc}")
         yield f"\n\n[Error: {exc}]"
